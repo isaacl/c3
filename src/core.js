@@ -122,7 +122,8 @@ c3_chart_internal_fn.initParams = function () {
     $$.color = $$.generateColor();
     $$.levelColor = $$.generateLevelColor();
 
-    $$.dataTimeFormat = config.data_xLocaltime ? d3.time.format : d3.time.format.utc;
+    var dataTimeFormat = config.data_xLocaltime ? d3.time.format : d3.time.format.utc;
+    $$.dataTimeFormatter = dataTimeFormat(config.data_xFormat).parse;
     $$.axisTimeFormat = config.axis_x_localtime ? d3.time.format : d3.time.format.utc;
     $$.defaultAxisTimeFormat = $$.axisTimeFormat.multi([
         [".%L", function (d) { return d.getMilliseconds(); }],
@@ -460,7 +461,52 @@ c3_chart_internal_fn.showTargets = function () {
         .style("opacity", 1);
 };
 
-c3_chart_internal_fn.redraw = function (options, transitions) {
+c3_chart_internal_fn.redraw = function redrawDeferred (options, transitions) {
+    var $$ = this, config = $$.config, pendingRedraws = config.pendingRedraws;
+
+    var curPending = pendingRedraws.pop() || {};
+    if (transitions) {
+        if (!curPending.transitions) {
+            curPending.transitions = transitions;
+        } else {
+            // can't safely combine two redraws with transitions :-(
+            pendingRedraws.push(curPending);
+            curPending = {
+                transitions: transitions
+            };
+        }
+    }
+
+    if (options) {
+        if (!curPending.options) {
+            curPending.options = options;
+        } else {
+            for (var optKey in options) {
+                if (options.hasOwnProperty(optKey)) {
+                    curPending.options[optKey] = options[optKey];
+                }
+            }
+        }
+    }
+
+    pendingRedraws.push(curPending);
+    if (config.pendingRedrawId === undefined) {
+        config.pendingRedrawId = setTimeout($$.redrawCallback.bind(this), 50);
+    }
+};
+
+c3_chart_internal_fn.redrawCallback = function redrawCallback () {
+    var $$ = this, config = $$.config;
+    var pendingRedraws = config.pendingRedraws, curRedraw = pendingRedraws.shift();
+    window.clearTimeout(config.pendingRedrawId);
+    $$.redrawNow.call(this, curRedraw.options, curRedraw.transitions);
+
+    // Schedule a follow-up redraw, if necessary.
+    config.pendingRedrawId = pendingRedraws.length > 0 ?
+        setTimeout($$.redrawCallback.bind(this), 10) : undefined;
+};
+
+c3_chart_internal_fn.redrawNow = function (options, transitions) {
     var $$ = this, main = $$.main, d3 = $$.d3, config = $$.config;
     var areaIndices = $$.getShapeIndices($$.isAreaType), barIndices = $$.getShapeIndices($$.isBarType), lineIndices = $$.getShapeIndices($$.isLineType);
     var withY, withSubchart, withTransition, withTransitionForExit, withTransitionForAxis,
@@ -1033,9 +1079,9 @@ c3_chart_internal_fn.generateWait = function () {
 c3_chart_internal_fn.parseDate = function (date) {
     var $$ = this, parsedDate;
     if (date instanceof Date) {
-        parsedDate = date;
+        return date;
     } else if (typeof date === 'string') {
-        parsedDate = $$.dataTimeFormat($$.config.data_xFormat).parse(date);
+        parsedDate = $$.dataTimeFormatter(date);
     } else if (typeof date === 'number' && !isNaN(date)) {
         parsedDate = new Date(+date);
     }

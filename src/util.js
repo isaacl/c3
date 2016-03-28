@@ -31,6 +31,16 @@ var isValue = c3_chart_internal_fn.isValue = function (v) {
     getOption = c3_chart_internal_fn.getOption = function (options, key, defaultValue) {
         return isDefined(options[key]) ? options[key] : defaultValue;
     },
+    arrayEquals = c3_chart_internal_fn.arrayEquals = function (a, b) {
+        if (a === b) return true;
+        if (a === null || b === null || a.length !== b.length) return false;
+
+        var aLength = a.length;
+        for (var i = 0; i < aLength; ++i) {
+            if (a[i] !== b[i]) return false;
+        }
+        return true;
+    },
     hasValue = c3_chart_internal_fn.hasValue = function (dict, value) {
         var found = false;
         Object.keys(dict).forEach(function (key) {

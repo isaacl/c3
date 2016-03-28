@@ -127,7 +127,8 @@
         $$.color = $$.generateColor();
         $$.levelColor = $$.generateLevelColor();
 
-        $$.dataTimeFormat = config.data_xLocaltime ? d3.time.format : d3.time.format.utc;
+        var dataTimeFormat = config.data_xLocaltime ? d3.time.format : d3.time.format.utc;
+        $$.dataTimeFormatter = dataTimeFormat(config.data_xFormat).parse;
         $$.axisTimeFormat = config.axis_x_localtime ? d3.time.format : d3.time.format.utc;
         $$.defaultAxisTimeFormat = $$.axisTimeFormat.multi([
             [".%L", function (d) { return d.getMilliseconds(); }],
@@ -465,7 +466,52 @@
             .style("opacity", 1);
     };
 
-    c3_chart_internal_fn.redraw = function (options, transitions) {
+    c3_chart_internal_fn.redraw = function redrawDeferred (options, transitions) {
+        var $$ = this, config = $$.config, pendingRedraws = config.pendingRedraws;
+
+        var curPending = pendingRedraws.pop() || {};
+        if (transitions) {
+            if (!curPending.transitions) {
+                curPending.transitions = transitions;
+            } else {
+                // can't safely combine two redraws with transitions :-(
+                pendingRedraws.push(curPending);
+                curPending = {
+                    transitions: transitions
+                };
+            }
+        }
+
+        if (options) {
+            if (!curPending.options) {
+                curPending.options = options;
+            } else {
+                for (var optKey in options) {
+                    if (options.hasOwnProperty(optKey)) {
+                        curPending.options[optKey] = options[optKey];
+                    }
+                }
+            }
+        }
+
+        pendingRedraws.push(curPending);
+        if (config.pendingRedrawId === undefined) {
+            config.pendingRedrawId = setTimeout($$.redrawCallback.bind(this), 50);
+        }
+    };
+
+    c3_chart_internal_fn.redrawCallback = function redrawCallback () {
+        var $$ = this, config = $$.config;
+        var pendingRedraws = config.pendingRedraws, curRedraw = pendingRedraws.shift();
+        window.clearTimeout(config.pendingRedrawId);
+        $$.redrawNow.call(this, curRedraw.options, curRedraw.transitions);
+
+        // Schedule a follow-up redraw, if necessary.
+        config.pendingRedrawId = pendingRedraws.length > 0 ?
+            setTimeout($$.redrawCallback.bind(this), 10) : undefined;
+    };
+
+    c3_chart_internal_fn.redrawNow = function (options, transitions) {
         var $$ = this, main = $$.main, d3 = $$.d3, config = $$.config;
         var areaIndices = $$.getShapeIndices($$.isAreaType), barIndices = $$.getShapeIndices($$.isBarType), lineIndices = $$.getShapeIndices($$.isLineType);
         var withY, withSubchart, withTransition, withTransitionForExit, withTransitionForAxis,
@@ -1038,9 +1084,9 @@
     c3_chart_internal_fn.parseDate = function (date) {
         var $$ = this, parsedDate;
         if (date instanceof Date) {
-            parsedDate = date;
+            return date;
         } else if (typeof date === 'string') {
-            parsedDate = $$.dataTimeFormat($$.config.data_xFormat).parse(date);
+            parsedDate = $$.dataTimeFormatter(date);
         } else if (typeof date === 'number' && !isNaN(date)) {
             parsedDate = new Date(+date);
         }
@@ -1129,6 +1175,8 @@
             data_columns: undefined,
             data_mimeType: undefined,
             data_keys: undefined,
+            pendingRedraws: [],
+            pendingRedrawId: undefined,
             // configuration for no plot-able data supplied.
             data_empty_label_text: "",
             // subchart
@@ -1187,7 +1235,7 @@
             axis_y_label: {},
             axis_y_tick_format: undefined,
             axis_y_tick_outer: true,
-            axis_y_tick_values: null,        
+            axis_y_tick_values: null,
             axis_y_tick_rotate: 0,
             axis_y_tick_count: undefined,
             axis_y_tick_time_value: undefined,
@@ -3491,13 +3539,16 @@
 
     c3_chart_internal_fn.setTargetType = function (targetIds, type) {
         var $$ = this, config = $$.config;
+        var anyChanged = false;
         $$.mapToTargetIds(targetIds).forEach(function (id) {
-            $$.withoutFadeIn[id] = (type === config.data_types[id]);
+            anyChanged |= $$.withoutFadeIn[id] = (type === config.data_types[id]);
             config.data_types[id] = type;
         });
-        if (!targetIds) {
+        if (!targetIds && config.data_type !== type) {
+            anyChanged = true;
             config.data_type = type;
         }
+        return anyChanged;
     };
     c3_chart_internal_fn.hasType = function (type, targets) {
         var $$ = this, types = $$.config.data_types, has = false;
@@ -6043,6 +6094,16 @@
         getOption = c3_chart_internal_fn.getOption = function (options, key, defaultValue) {
             return isDefined(options[key]) ? options[key] : defaultValue;
         },
+        arrayEquals = c3_chart_internal_fn.arrayEquals = function (a, b) {
+            if (a === b) return true;
+            if (a === null || b === null || a.length !== b.length) return false;
+
+            var aLength = a.length;
+            for (var i = 0; i < aLength; ++i) {
+                if (a[i] !== b[i]) return false;
+            }
+            return true;
+        },
         hasValue = c3_chart_internal_fn.hasValue = function (dict, value) {
             var found = false;
             Object.keys(dict).forEach(function (key) {
@@ -6646,16 +6707,18 @@
             options = optionsForRedraw || {withTransitionForAxis: withTransitionForAxis};
         options.withTransitionForTransform = false;
         $$.transiting = false;
-        $$.setTargetType(targetIds, type);
-        $$.updateTargets($$.data.targets); // this is needed when transforming to arc
-        $$.updateAndRedraw(options);
+        if ($$.setTargetType(targetIds, type)) {
+            $$.updateTargets($$.data.targets); // this is needed when transforming to arc
+            $$.updateAndRedraw(options);
+        }
     };
 
     c3_chart_fn.groups = function (groups) {
         var $$ = this.internal, config = $$.config;
-        if (isUndefined(groups)) { return config.data_groups; }
-        config.data_groups = groups;
-        $$.redraw();
+        if (isDefined(groups) && !arrayEquals(config.data_groups, groups)) {
+            config.data_groups = groups;
+            $$.redraw();
+        }
         return config.data_groups;
     };
 

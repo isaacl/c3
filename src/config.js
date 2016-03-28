@@ -62,6 +62,8 @@ c3_chart_internal_fn.getDefaultConfig = function () {
         data_columns: undefined,
         data_mimeType: undefined,
         data_keys: undefined,
+        pendingRedraws: [],
+        pendingRedrawId: undefined,
         // configuration for no plot-able data supplied.
         data_empty_label_text: "",
         // subchart
@@ -120,7 +122,7 @@ c3_chart_internal_fn.getDefaultConfig = function () {
         axis_y_label: {},
         axis_y_tick_format: undefined,
         axis_y_tick_outer: true,
-        axis_y_tick_values: null,        
+        axis_y_tick_values: null,
         axis_y_tick_rotate: 0,
         axis_y_tick_count: undefined,
         axis_y_tick_time_value: undefined,

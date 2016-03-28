@@ -1,12 +1,15 @@
 c3_chart_internal_fn.setTargetType = function (targetIds, type) {
     var $$ = this, config = $$.config;
+    var anyChanged = false;
     $$.mapToTargetIds(targetIds).forEach(function (id) {
-        $$.withoutFadeIn[id] = (type === config.data_types[id]);
+        anyChanged |= $$.withoutFadeIn[id] = (type === config.data_types[id]);
         config.data_types[id] = type;
     });
-    if (!targetIds) {
+    if (!targetIds && config.data_type !== type) {
+        anyChanged = true;
         config.data_type = type;
     }
+    return anyChanged;
 };
 c3_chart_internal_fn.hasType = function (type, targets) {
     var $$ = this, types = $$.config.data_types, has = false;
