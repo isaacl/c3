@@ -62,6 +62,7 @@ c3_chart_internal_fn.getDefaultConfig = function () {
         data_columns: undefined,
         data_mimeType: undefined,
         data_keys: undefined,
+        redrawDelay: 50,
         pendingRedraws: [],
         pendingRedrawId: undefined,
         // configuration for no plot-able data supplied.

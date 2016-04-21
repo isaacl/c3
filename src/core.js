@@ -463,7 +463,6 @@ c3_chart_internal_fn.showTargets = function () {
 
 c3_chart_internal_fn.redraw = function redrawDeferred (options, transitions) {
     var $$ = this, config = $$.config, pendingRedraws = config.pendingRedraws;
-
     var curPending = pendingRedraws.pop() || {};
     if (transitions) {
         if (!curPending.transitions) {
@@ -478,22 +477,31 @@ c3_chart_internal_fn.redraw = function redrawDeferred (options, transitions) {
     }
 
     if (options) {
+        options = $$.defaultRedrawOptions(options);
+
         if (!curPending.options) {
             curPending.options = options;
         } else {
-            for (var optKey in options) {
-                if (options.hasOwnProperty(optKey)) {
-                    curPending.options[optKey] = options[optKey];
+            var optKey,
+                hasOwnProp = Object.prototype.hasOwnProperty,
+                curOptions = curPending.options;
+            for (optKey in options) {
+                if (hasOwnProp.call(options, optKey)) {
+                    curOptions[optKey] |= options[optKey];
                 }
             }
         }
     }
 
     pendingRedraws.push(curPending);
-    if (config.pendingRedrawId === undefined) {
-        config.pendingRedrawId = setTimeout($$.redrawCallback.bind(this), 50);
+
+    if (config.redrawDelay === 0) {
+        $$.redrawCallback();
+    } else if (config.pendingRedrawId === undefined) {
+        config.pendingRedrawId = setTimeout($$.redrawCallback.bind(this), config.redrawDelay);
     }
 };
+
 
 c3_chart_internal_fn.redrawCallback = function redrawCallback () {
     var $$ = this, config = $$.config;
@@ -506,12 +514,32 @@ c3_chart_internal_fn.redrawCallback = function redrawCallback () {
         setTimeout($$.redrawCallback.bind(this), 10) : undefined;
 };
 
+c3_chart_internal_fn.defaultRedrawOptions = function (options) {
+    options = options || {};
+
+    var withTransition = getOption(options, "withTransition", true),
+        withUpdateXDomain = getOption(options, "withUpdateXDomain", false);
+
+    return Object.assign({
+        withY: true,
+        withSubchart: true,
+        withTransition: withTransition,
+        withTransform: false,
+        withUpdateXDomain: withUpdateXDomain,
+        withUpdateOrgXDomain: false,
+        withTrimXDomain: true,
+        withLegend: false,
+        withEventRect: true,
+        withDimension: true,
+        withUpdateXAxis: withUpdateXDomain,
+        withTransitionForExit: withTransition,
+        withTransitionForAxis: withTransition,
+    }, options);
+};
+
 c3_chart_internal_fn.redrawNow = function (options, transitions) {
     var $$ = this, main = $$.main, d3 = $$.d3, config = $$.config;
     var areaIndices = $$.getShapeIndices($$.isAreaType), barIndices = $$.getShapeIndices($$.isBarType), lineIndices = $$.getShapeIndices($$.isLineType);
-    var withY, withSubchart, withTransition, withTransitionForExit, withTransitionForAxis,
-        withTransform, withUpdateXDomain, withUpdateOrgXDomain, withTrimXDomain, withLegend,
-        withEventRect, withDimension, withUpdateXAxis;
     var hideAxis = $$.hasArcType();
     var drawArea, drawBar, drawLine, xForText, yForText;
     var duration, durationForExit, durationForAxis;
@@ -519,20 +547,20 @@ c3_chart_internal_fn.redrawNow = function (options, transitions) {
     var targetsToShow = $$.filterTargetsToShow($$.data.targets), tickValues, i, intervalForCulling, xDomainForZoom;
     var xv = $$.xv.bind($$), cx, cy;
 
-    options = options || {};
-    withY = getOption(options, "withY", true);
-    withSubchart = getOption(options, "withSubchart", true);
-    withTransition = getOption(options, "withTransition", true);
-    withTransform = getOption(options, "withTransform", false);
-    withUpdateXDomain = getOption(options, "withUpdateXDomain", false);
-    withUpdateOrgXDomain = getOption(options, "withUpdateOrgXDomain", false);
-    withTrimXDomain = getOption(options, "withTrimXDomain", true);
-    withUpdateXAxis = getOption(options, "withUpdateXAxis", withUpdateXDomain);
-    withLegend = getOption(options, "withLegend", false);
-    withEventRect = getOption(options, "withEventRect", true);
-    withDimension = getOption(options, "withDimension", true);
-    withTransitionForExit = getOption(options, "withTransitionForExit", withTransition);
-    withTransitionForAxis = getOption(options, "withTransitionForAxis", withTransition);
+    options = options || $$.defaultRedrawOptions();
+    var withY = options.withY,
+        withSubchart = options.withSubchart,
+        withTransition = options.withTransition,
+        withTransform = options.withTransform,
+        withUpdateXDomain = options.withUpdateXDomain,
+        withUpdateOrgXDomain = options.withUpdateOrgXDomain,
+        withTrimXDomain = options.withTrimXDomain,
+        withUpdateXAxis = options.withUpdateXAxis,
+        withLegend = options.withLegend,
+        withEventRect = options.withEventRect,
+        withDimension = options.withDimension,
+        withTransitionForExit = options.withTransitionForExit,
+        withTransitionForAxis = options.withTransitionForAxis;
 
     duration = withTransition ? config.transition_duration : 0;
     durationForExit = withTransitionForExit ? duration : 0;

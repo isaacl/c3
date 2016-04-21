@@ -30,6 +30,7 @@ function initChart(chart, args, done) {
         window.initDom();
     }
     if (args) {
+        args.redrawDelay = 0;
         chart = window.c3.generate(args);
         window.d3 = chart.internal.d3;
         window.d3.select('.jasmine_html-reporter')
