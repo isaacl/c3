@@ -1,0 +1,17 @@
+{
+	"folders":
+	[
+		{
+			"path": ".",
+			"file_exclude_patterns": [
+			    "c3.*js",
+			    "c3.*css"
+			],
+			"folder_exclude_patterns": [
+			    "node_modules",
+			    "htdocs",
+			    "coverage"
+			]
+		}
+	]
+}
